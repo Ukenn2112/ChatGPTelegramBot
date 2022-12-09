@@ -1,19 +1,26 @@
+import asyncio
 import json
 import logging
+import time
 
 import redis
 import telebot
-from revChatGPT.revChatGPT import Chatbot
+from asyncChatGPT.asyncChatGPT import Chatbot
+from telebot.async_telebot import AsyncTeleBot
 
 telebot.logger.setLevel(logging.ERROR)
 logging.getLogger().setLevel(logging.INFO)
 
+logging.basicConfig(
+    format='[%(levelname)s]%(asctime)s: %(message)s',
+)
+
 with open('config.json', "r") as f: config = json.load(f)
 redis_pool = redis.Redis(host=config.get('redis_host'), port=config.get('redis_port'), db=config.get('redis_db'))
-bot = telebot.TeleBot(config.get('bot_token'))
+bot = AsyncTeleBot(config.get('bot_token'))
 
 @bot.message_handler(commands=['start', 'help'])
-def start_message(message):
+async def start_message(message):
     text = (
         '*欢迎使用 ChatGPT 机器人*\n\n'
         '我是一个语言模型，被训练来回答各种问题。我能够理解和回答许多不同类型的问题，并尽力为您提供准确和有用的信息。\n'
@@ -28,68 +35,76 @@ def start_message(message):
         '2\\. 请勿频繁使用机器人，否则会被限制使用\n\n'
         '*开源项目：[ChatGPTelegramBot](https://github.com/Ukenn2112/ChatGPTelegramBot)*\n'
     )
-    return bot.reply_to(message, text, parse_mode='MarkdownV2')
+    return await bot.reply_to(message, text, parse_mode='MarkdownV2')
 
 # 重置对话
 @bot.message_handler(commands=['rechat'])
-def rechat_message(message):
+async def rechat_message(message):
     cp_ids = redis_pool.get(message.from_user.id)
-    if not cp_ids: return bot.reply_to(message, '没有属于你的对话')
+    if not cp_ids: return await bot.reply_to(message, '没有属于你的对话')
     redis_pool.delete(message.from_user.id)
-    return bot.reply_to(message, '已重置对话')
+    return await bot.reply_to(message, '已重置对话')
 
 # 私聊
 @bot.message_handler(content_types=['text'], chat_types=['private'])
-def echo_message_private(message):
+async def echo_message_private(message):
+    start_time = time.time()
     chatbot = create_or_get_chatbot(message.from_user.id)
     check_and_update_session(chatbot, message.from_user.id)
 
-    logging.info(f'{message.from_user.username or message.from_user.first_name}-{message.from_user.id}: {message.text}')
+    from_user = f'{message.from_user.username or message.from_user.first_name or message.from_user.last_name}[{message.from_user.id}]'
+    logging.info(f'{from_user}-->ChatGPT: {message.text}')
     try:
-        resp = chatbot.get_chat_response(message.text, output="text")
-        logging.info(f'ChatGPT: {resp}')
-        echo_text = resp['message']
+        resp = await chatbot.get_chat_response(message.text, output="text")
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        logging.info(f"ChatGPT-->{from_user}: {resp['message']}" + '\n运行时间 {:.3f} 秒'.format(elapsed_time))
         redis_pool.set(message.from_user.id, f"{resp['conversation_id']}|{resp['parent_id']}", ex=3600)
-    except Exception as e:
-        logging.error(e)
-        echo_text = f'ChatGPT 服务器出错，请重试～ \n`{e}`'
+    except Exception as error:
+        logging.error(error)
+        return await bot.reply_to(message, f'ChatGPT 服务器出错，请重试～ \n`{error}`', parse_mode='Markdown')
+
     try:
-        return bot.reply_to(message, echo_text, parse_mode='Markdown')
-    except Exception as e:
-        if "can't parse entities" in str(e):
-            return bot.reply_to(message, resp['message'])
-        elif "replied message not found" in str(e):
+        return await bot.reply_to(message, resp['message'], parse_mode='Markdown')
+    except Exception as error:
+        if "can't parse entities" in str(error):
+            return await bot.reply_to(message, resp['message'])
+        elif "replied message not found" in str(error):
             return chatbot.rollback_conversation()
-        logging.error(e)
-        return bot.reply_to(message, f'机器人发送回答出错～ \n`{e}`', parse_mode='Markdown')
+        logging.error(error)
+        return await bot.reply_to(message, f'机器人发送回答出错～ \n`{error}`', parse_mode='Markdown')
 
 # 群组
 @bot.message_handler(content_types=['text'], chat_types=['supergroup'],
                      func=lambda m: m.text.startswith('ai '))
-def echo_message_supergroup(message):
+async def echo_message_supergroup(message):
+    start_time = time.time()
     chatbot = create_or_get_chatbot(message.from_user.id)
     check_and_update_session(chatbot, message.from_user.id)
 
-    logging.info(f'{message.from_user.username or message.from_user.first_name}-{message.from_user.id}: {message.text}')
+    from_user = f'{message.from_user.username or message.from_user.first_name or message.from_user.last_name}[{message.from_user.id}]'
+    logging.info(f'{from_user}-->ChatGPT: {message.text[3:]}')
     try:
-        resp = chatbot.get_chat_response(message.text[3:], output="text")
-        logging.info(f'ChatGPT: {resp}')
-        echo_text = resp['message']
+        resp = await chatbot.get_chat_response(message.text[3:], output="text")
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        logging.info(f"ChatGPT-->{from_user}: {resp['message']}" + '\n运行时间 {:.3f} 秒'.format(elapsed_time))
         redis_pool.set(message.from_user.id, f"{resp['conversation_id']}|{resp['parent_id']}", ex=3600)
-    except Exception as e:
-        logging.error(e)
-        echo_text = f'ChatGPT 服务器出错，请重试～ \n`{e}`'
+    except Exception as error:
+        logging.error(error)
+        return await bot.reply_to(message, f'ChatGPT 服务器出错，请重试～ \n`{error}`', parse_mode='Markdown')
+
     try:
-        return bot.reply_to(message, echo_text, parse_mode='Markdown')
-    except Exception as e:
-        if "can't parse entities" in str(e):
-            return bot.reply_to(message, resp['message'])
-        elif "replied message not found" in str(e):
+        return await bot.reply_to(message, resp['message'], parse_mode='Markdown')
+    except Exception as error:
+        if "can't parse entities" in str(error):
+            return await bot.reply_to(message, resp['message'])
+        elif "replied message not found" in str(error):
             return chatbot.rollback_conversation()
-        elif "bot was kicked from the supergroup chat" in str(e):
+        elif "bot was kicked from the supergroup chat" in str(error):
             return
-        logging.error(e)
-        return bot.reply_to(message, f'机器人发送回答出错～ \n`{e}`', parse_mode='Markdown')
+        logging.error(error)
+        return await bot.reply_to(message, f'机器人发送回答出错～ \n`{error}`', parse_mode='Markdown')
 
 def create_or_get_chatbot(user_id) -> Chatbot:
     """新建或获取 ChatGPT 对话类"""
@@ -98,14 +113,18 @@ def create_or_get_chatbot(user_id) -> Chatbot:
         return Chatbot(config)
     else:
         cp_ids = cp_ids.decode().split('|')
-        chatbot = Chatbot(config, conversation_id=cp_ids[0])
-        chatbot.parent_id = cp_ids[1]
+        chatbot = Chatbot(
+            config,
+            conversation_id=cp_ids[0],
+            parent_id=cp_ids[1]
+            )
         return chatbot
 
 def check_and_update_session(chatbot: Chatbot, user_id) -> None:
     """检查并更新 ChatGPT 对话类的会话"""
     if redis_pool.ttl(user_id) < 2000:
         chatbot.refresh_session()
+        redis_pool.set(user_id, f"{chatbot.conversation_id}|{chatbot.parent_id}", ex=3600)
 
 if __name__ == '__main__':
-    bot.infinity_polling()
+    asyncio.run(bot.infinity_polling())
