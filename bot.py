@@ -52,8 +52,6 @@ async def addwhite_message(message):
     if not message.reply_to_message:
         data = message.text.split(' ')
         if len(data) == 1:
-            return await bot.reply_to(message, '输入的对话 ID 不正确')
-        elif not data[1].isdigit():
             return await bot.reply_to(message, '请回复需要加入白名单的用户消息，或者直接输入对话 ID')
         add_white_id = int(data[1])
     else:
