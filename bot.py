@@ -5,7 +5,7 @@ import time
 
 import redis
 import telebot
-from asyncChatGPT.asyncChatGPT import Chatbot
+from revChatGPT.revChatGPT import Chatbot
 from telebot.async_telebot import AsyncTeleBot
 
 telebot.logger.setLevel(logging.ERROR)
@@ -55,7 +55,7 @@ async def echo_message_private(message):
     from_user = f'{message.from_user.username or message.from_user.first_name or message.from_user.last_name}[{message.from_user.id}]'
     logging.info(f'{from_user}-->ChatGPT: {message.text}')
     try:
-        resp = await chatbot.get_chat_response(message.text, output="text")
+        resp = chatbot.get_chat_response(message.text, output="text")
         end_time = time.time()
         elapsed_time = end_time - start_time
         logging.info(f"ChatGPT-->{from_user}: {resp['message']}" + '\n运行时间 {:.3f} 秒'.format(elapsed_time))
@@ -76,7 +76,8 @@ async def echo_message_private(message):
 
 # 群组
 @bot.message_handler(content_types=['text'], chat_types=['supergroup'],
-                     func=lambda m: m.text.startswith('ai '))
+                     func=lambda m: m.text.startswith('ai '),
+                     white_list=True)
 async def echo_message_supergroup(message):
     start_time = time.time()
     chatbot = create_or_get_chatbot(message.from_user.id)
@@ -85,7 +86,7 @@ async def echo_message_supergroup(message):
     from_user = f'{message.from_user.username or message.from_user.first_name or message.from_user.last_name}[{message.from_user.id}]'
     logging.info(f'{from_user}-->ChatGPT: {message.text[3:]}')
     try:
-        resp = await chatbot.get_chat_response(message.text[3:], output="text")
+        resp = chatbot.get_chat_response(message.text[3:], output="text")
         end_time = time.time()
         elapsed_time = end_time - start_time
         logging.info(f"ChatGPT-->{from_user}: {resp['message']}" + '\n运行时间 {:.3f} 秒'.format(elapsed_time))
@@ -105,6 +106,22 @@ async def echo_message_supergroup(message):
             return
         logging.error(error)
         return await bot.reply_to(message, f'机器人发送回答出错～ \n`{error}`', parse_mode='Markdown')
+
+class WhiteList(telebot.asyncio_filters.SimpleCustomFilter):
+    """白名单过滤器"""
+    key='white_list'
+    @staticmethod
+    async def check(message: telebot.types.Message):
+        if not config.get('white_list'): return True
+        elif message.chat.id in config.get('white_list'):
+            return True
+        else:
+            await bot.reply_to(message, ('*由于 ChatGPT API 性能的限制，该机器人现已开启白名单对话限制\n'
+                                         '由于该对话或群组不在白名单中，无法使用此机器人～\n'
+                                         '如果您想继续使用请尝试自建机器人～\n'
+                                         'Github\\: [ChatGPTelegramBot](https://github.com/Ukenn2112/ChatGPTelegramBot)*'), parse_mode='MarkdownV2')
+            return False
+bot.add_custom_filter(WhiteList())
 
 def create_or_get_chatbot(user_id) -> Chatbot:
     """新建或获取 ChatGPT 对话类"""
