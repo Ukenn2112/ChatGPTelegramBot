@@ -34,6 +34,7 @@
 start - 开始
 help - 使用帮助
 rechat - 重置对话
+addwhite - 添加白名单
 ```
 
 ## 感谢 [acheong08/ChatGPT](https://github.com/acheong08/ChatGPT)

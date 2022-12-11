@@ -2,6 +2,7 @@
     "email": "<OpenAI email>",
     "password": "<OpenAI password>",
     "bot_token": "<Telegram bot token>",
+    "admin_id": 0,
     "white_list": [],
     "redis_host": "localhost",
     "redis_port": 6379,

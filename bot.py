@@ -45,6 +45,25 @@ async def rechat_message(message):
     redis_pool.delete(message.from_user.id)
     return await bot.reply_to(message, '已重置对话')
 
+# 添加白名单
+@bot.message_handler(commands=['addwhite'],
+                     func=lambda m: m.from_user.id==config.get('admin_id'))
+async def addwhite_message(message):
+    if not message.reply_to_message:
+        data = message.text.split(' ')
+        if len(data) == 1:
+            return await bot.reply_to(message, '输入的对话 ID 不正确')
+        elif not data[1].isdigit():
+            return await bot.reply_to(message, '请回复需要加入白名单的用户消息，或者直接输入对话 ID')
+        add_white_id = int(data[1])
+    else:
+        add_white_id = message.reply_to_message.from_user.id
+    if add_white_id in config.get('white_list'):
+        return await bot.reply_to(message, '该对话 ID 已经在白名单中了')
+    config['white_list'].append(add_white_id)
+    with open('config.json', "w") as f: json.dump(config, f, indent=4)
+    return await bot.reply_to(message, '已添加到白名单')
+
 # 私聊
 @bot.message_handler(content_types=['text'], chat_types=['private'])
 async def echo_message_private(message):
