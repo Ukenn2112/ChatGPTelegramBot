@@ -1,6 +1,7 @@
 {
-    "email": "<OpenAI email>",
-    "password": "<OpenAI password>",
+    "session_token": "<YOUR_TOKEN>",
+    "cf_clearance": "<CLOUDFLARE_TOKEN>",
+    "user_agent": "<USER_AGENT>"
     "bot_token": "<Telegram bot token>",
     "admin_id": 0,
     "white_list": [],

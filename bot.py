@@ -5,7 +5,7 @@ import time
 
 import redis
 import telebot
-from revChatGPT.revChatGPT import Chatbot
+from revChatGPT.revChatGPT import AsyncChatbot
 from telebot.async_telebot import AsyncTeleBot
 
 telebot.logger.setLevel(logging.ERROR)
@@ -72,7 +72,7 @@ async def echo_message_private(message):
     from_user = f'{message.from_user.username or message.from_user.first_name or message.from_user.last_name}[{message.from_user.id}]'
     logging.info(f'{from_user}-->ChatGPT: {message.text}')
     try:
-        resp = chatbot.get_chat_response(message.text, output="text")
+        resp = await chatbot.get_chat_response(message.text, output="text")
         end_time = time.time()
         elapsed_time = end_time - start_time
         logging.info(f"ChatGPT-->{from_user}: {resp['message']}" + '\n运行时间 {:.3f} 秒'.format(elapsed_time))
@@ -103,7 +103,7 @@ async def echo_message_supergroup(message):
     from_user = f'{message.from_user.username or message.from_user.first_name or message.from_user.last_name}[{message.from_user.id}]'
     logging.info(f'{from_user}-->ChatGPT: {message.text[3:]}')
     try:
-        resp = chatbot.get_chat_response(message.text[3:], output="text")
+        resp = await chatbot.get_chat_response(message.text[3:], output="text")
         end_time = time.time()
         elapsed_time = end_time - start_time
         logging.info(f"ChatGPT-->{from_user}: {resp['message']}" + '\n运行时间 {:.3f} 秒'.format(elapsed_time))
@@ -140,21 +140,21 @@ class WhiteList(telebot.asyncio_filters.SimpleCustomFilter):
             return False
 bot.add_custom_filter(WhiteList())
 
-def create_or_get_chatbot(user_id) -> Chatbot:
+def create_or_get_chatbot(user_id) -> AsyncChatbot:
     """新建或获取 ChatGPT 对话类"""
     cp_ids = redis_pool.get(user_id)
     if not cp_ids:
-        return Chatbot(config)
+        return AsyncChatbot(config)
     else:
         cp_ids = cp_ids.decode().split('|')
-        chatbot = Chatbot(
+        chatbot = AsyncChatbot(
             config,
             conversation_id=cp_ids[0],
             parent_id=cp_ids[1]
             )
         return chatbot
 
-def check_and_update_session(chatbot: Chatbot, user_id) -> None:
+def check_and_update_session(chatbot: AsyncChatbot, user_id) -> None:
     """检查并更新 ChatGPT 对话类的会话"""
     if redis_pool.ttl(user_id) < 2000:
         chatbot.refresh_session()
