@@ -160,6 +160,7 @@ async def create_or_get_chatbot(user_id) -> AsyncChatbot:
                 return chatbot
         except Exception as error:
             if 'Wrong response code' in str(error):
+                logging.warning('刷新 cf_clearance')
                 await get_cf_clearance()
             i += 1
             if i > 3: raise Exception(error)
@@ -185,6 +186,7 @@ async def get_cf_clearance():
                 if cookie.get('name') == 'cf_clearance':
                     cf_clearance_value = cookie.get('value')
             ua = await page.evaluate('() => {return navigator.userAgent}')
+            logging.info('获取 cf_clearance 成功')
         else:
             raise Exception('获取 cf_clearance 失败')
         await browser.close()
