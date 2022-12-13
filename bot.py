@@ -5,6 +5,8 @@ import time
 
 import redis
 import telebot
+from cf_clearance import async_cf_retry, async_stealth
+from playwright.async_api import async_playwright
 from revChatGPT.revChatGPT import AsyncChatbot
 from telebot.async_telebot import AsyncTeleBot
 
@@ -66,7 +68,7 @@ async def addwhite_message(message):
 @bot.message_handler(content_types=['text'], chat_types=['private'])
 async def echo_message_private(message):
     start_time = time.time()
-    chatbot = create_or_get_chatbot(message.from_user.id)
+    chatbot = await create_or_get_chatbot(message.from_user.id)
     check_and_update_session(chatbot, message.from_user.id)
 
     from_user = f'{message.from_user.username or message.from_user.first_name or message.from_user.last_name}[{message.from_user.id}]'
@@ -97,7 +99,7 @@ async def echo_message_private(message):
                      white_list=True)
 async def echo_message_supergroup(message):
     start_time = time.time()
-    chatbot = create_or_get_chatbot(message.from_user.id)
+    chatbot = await create_or_get_chatbot(message.from_user.id)
     check_and_update_session(chatbot, message.from_user.id)
 
     from_user = f'{message.from_user.username or message.from_user.first_name or message.from_user.last_name}[{message.from_user.id}]'
@@ -140,19 +142,27 @@ class WhiteList(telebot.asyncio_filters.SimpleCustomFilter):
             return False
 bot.add_custom_filter(WhiteList())
 
-def create_or_get_chatbot(user_id) -> AsyncChatbot:
+async def create_or_get_chatbot(user_id) -> AsyncChatbot:
     """新建或获取 ChatGPT 对话类"""
-    cp_ids = redis_pool.get(user_id)
-    if not cp_ids:
-        return AsyncChatbot(config)
-    else:
-        cp_ids = cp_ids.decode().split('|')
-        chatbot = AsyncChatbot(
-            config,
-            conversation_id=cp_ids[0],
-            parent_id=cp_ids[1]
-            )
-        return chatbot
+    i = 0
+    while True:
+        try:
+            cp_ids = redis_pool.get(user_id)
+            if not cp_ids:
+                return AsyncChatbot(config)
+            else:
+                cp_ids = cp_ids.decode().split('|')
+                chatbot = AsyncChatbot(
+                    config,
+                    conversation_id=cp_ids[0],
+                    parent_id=cp_ids[1]
+                    )
+                return chatbot
+        except Exception as error:
+            if 'Wrong response code' in str(error):
+                await get_cf_clearance()
+            i += 1
+            if i > 3: raise Exception(error)
 
 def check_and_update_session(chatbot: AsyncChatbot, user_id) -> None:
     """检查并更新 ChatGPT 对话类的会话"""
@@ -160,5 +170,29 @@ def check_and_update_session(chatbot: AsyncChatbot, user_id) -> None:
         chatbot.refresh_session()
         redis_pool.set(user_id, f"{chatbot.conversation_id}|{chatbot.parent_id}", ex=3600)
 
+async def get_cf_clearance():
+    """获取 cf_clearance"""
+    url = 'https://chat.openai.com/'
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=False)
+        page = await browser.new_page()
+        await async_stealth(page, pure=True)
+        await page.goto(url)
+        res = await async_cf_retry(page)
+        if res:
+            cookies = await page.context.cookies()
+            for cookie in cookies:
+                if cookie.get('name') == 'cf_clearance':
+                    cf_clearance_value = cookie.get('value')
+            ua = await page.evaluate('() => {return navigator.userAgent}')
+        else:
+            raise Exception('获取 cf_clearance 失败')
+        await browser.close()
+    config['user_agent'] = ua
+    config['cf_clearance'] = cf_clearance_value
+    with open('config.json', "w") as f: json.dump(config, f, indent=4)
+
 if __name__ == '__main__':
-    asyncio.run(bot.infinity_polling())
+    if not config.get('cf_clearance') and not config.get('user_agent'):
+        asyncio.get_event_loop().run_until_complete(get_cf_clearance())
+    asyncio.run(bot.polling(non_stop=True, request_timeout=90))

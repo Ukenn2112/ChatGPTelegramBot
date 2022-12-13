@@ -1,3 +1,5 @@
+cf_clearance>=0.28.2
+playwright>=1.28.0
 pyTelegramBotAPI>=4.8.0
 redis>=4.3.4
-revChatGPT==0.0.a42
+revChatGPT>=0.0.38.8

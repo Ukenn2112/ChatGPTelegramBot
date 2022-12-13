@@ -21,6 +21,8 @@
   ```
   pip3 install -r requirements.txt
   ```
+  
+  第一次安装 playwright 请使用 `playwright install`
 
 - 运行 Telegram Bot 模块
   
