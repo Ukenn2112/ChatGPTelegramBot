@@ -1,0 +1,15 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Byte-compiled / optimized / DLL files
+**/__pycache__/
+**/*.py[cod]
+
+# Docker
+docker-compose.yml
+Dockerfile
+.dockerignore
+
+config.json.example
