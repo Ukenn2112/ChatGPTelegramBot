@@ -5,7 +5,7 @@ import time
 
 import redis
 import telebot
-from revChatGPT.revChatGPT import AsyncChatbot
+from revChatGPT import AsyncChatbot
 from telebot.async_telebot import AsyncTeleBot
 
 telebot.logger.setLevel(logging.ERROR)
@@ -19,7 +19,7 @@ with open('config.json', "r") as f: config = json.load(f)
 redis_pool = redis.Redis(host=config.get('redis_host'), port=config.get('redis_port'), db=config.get('redis_db'))
 bot = AsyncTeleBot(config.get('bot_token'))
 
-chatbot = AsyncChatbot(config)
+chatbot = AsyncChatbot(config.get('session_token'), debug=True)
 
 @bot.message_handler(commands=['start', 'help'])
 async def start_message(message):
@@ -65,12 +65,13 @@ async def addwhite_message(message):
     return await bot.reply_to(message, '已添加到白名单')
 
 # 私聊
-@bot.message_handler(content_types=['text'], chat_types=['private'])
+@bot.message_handler(content_types=['text'], chat_types=['private'],
+                     white_list=True)
 async def echo_message_private(message):
     start_time = time.time()
     cp_ids = redis_pool.get(message.from_user.id)
     if not cp_ids: cp_ids = [None, None]
-    check_and_update_session(chatbot, message.from_user.id)
+    else: cp_ids = cp_ids.decode().split('|')
 
     from_user = f'{message.from_user.username or message.from_user.first_name or message.from_user.last_name}[{message.from_user.id}]'
     logging.info(f'{from_user}-->ChatGPT: {message.text}')
@@ -79,7 +80,7 @@ async def echo_message_private(message):
         end_time = time.time()
         elapsed_time = end_time - start_time
         logging.info(f"ChatGPT-->{from_user}: {resp['message']}" + '\n运行时间 {:.3f} 秒'.format(elapsed_time))
-        if not cp_ids: redis_pool.set(message.from_user.id, f"{resp['conversation_id']}|{resp['parent_id']}", ex=3600)
+        redis_pool.set(message.from_user.id, f"{resp['conversation_id']}|{resp['parent_id']}", ex=3600)
     except Exception as error:
         logging.error(error)
         return await bot.reply_to(message, f'ChatGPT 服务器出错，请重试～ \n`{error}`', parse_mode='Markdown')
@@ -102,7 +103,7 @@ async def echo_message_supergroup(message):
     start_time = time.time()
     cp_ids = redis_pool.get(message.from_user.id)
     if not cp_ids: cp_ids = [None, None]
-    check_and_update_session(chatbot, message.from_user.id)
+    else: cp_ids = cp_ids.decode().split('|')
 
     from_user = f'{message.from_user.username or message.from_user.first_name or message.from_user.last_name}[{message.from_user.id}]'
     logging.info(f'{from_user}-->ChatGPT: {message.text[3:]}')
@@ -111,7 +112,7 @@ async def echo_message_supergroup(message):
         end_time = time.time()
         elapsed_time = end_time - start_time
         logging.info(f"ChatGPT-->{from_user}: {resp['message']}" + '\n运行时间 {:.3f} 秒'.format(elapsed_time))
-        if not cp_ids: redis_pool.set(message.from_user.id, f"{resp['conversation_id']}|{resp['parent_id']}", ex=3600)
+        redis_pool.set(message.from_user.id, f"{resp['conversation_id']}|{resp['parent_id']}", ex=3600)
     except Exception as error:
         logging.error(error)
         return await bot.reply_to(message, f'ChatGPT 服务器出错，请重试～ \n`{error}`', parse_mode='Markdown')
@@ -143,12 +144,6 @@ class WhiteList(telebot.asyncio_filters.SimpleCustomFilter):
                                          'Github\\: [ChatGPTelegramBot](https://github.com/Ukenn2112/ChatGPTelegramBot)*'), parse_mode='MarkdownV2')
             return False
 bot.add_custom_filter(WhiteList())
-
-def check_and_update_session(chatbot: AsyncChatbot, user_id) -> None:
-    """检查并更新 ChatGPT 对话类的会话"""
-    if redis_pool.ttl(user_id) < 2000:
-        chatbot.refresh_session()
-        redis_pool.set(user_id, f"{chatbot.conversation_id}|{chatbot.parent_id}", ex=3600)
 
 if __name__ == '__main__':
     asyncio.run(bot.polling(non_stop=True, request_timeout=90))

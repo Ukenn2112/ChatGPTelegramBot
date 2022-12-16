@@ -21,8 +21,6 @@
   ```
   pip3 install -r requirements.txt
   ```
-  
-  第一次安装 playwright 请使用 `playwright install`
 
 - 运行 Telegram Bot 模块
   
@@ -56,4 +54,4 @@ rechat - 重置对话
 addwhite - 添加白名单
 ```
 
-## 感谢 [acheong08/ChatGPT](https://github.com/acheong08/ChatGPT)
+## 感谢 [acheong08/ChatGPT](https://github.com/acheong08/ChatGPT) [anton By ChatGPT API](https://twitter.com/abacaj)
