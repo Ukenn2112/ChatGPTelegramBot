@@ -83,7 +83,7 @@ async def echo_message_private(message):
     back_message = completion_resp.choices[0].message
     end_time = time.time()
     elapsed_time = end_time - start_time
-    logging.info(f"ChatGPT-->{from_user}: {back_message}" + '\n运行时间 {:.3f} 秒'.format(elapsed_time))
+    logging.info(f"ChatGPT-->{from_user}: {back_message.content.encode('utf-8').decode()}" + '\n运行时间 {:.3f} 秒'.format(elapsed_time) + f'共消耗{completion_resp.usage.total_tokens}个令牌')
     messages.append(back_message)
     redis_pool.set(f"chatgpt:{message.from_user.id}", json.dumps(messages), ex=3600)
     try:
@@ -105,7 +105,7 @@ async def echo_message_supergroup(message):
         messages = [{"role": "user", "content": message.text[3:]}]
 
     from_user = f'{message.from_user.username or message.from_user.first_name or message.from_user.last_name}[{message.from_user.id}]'
-    logging.info(f'{from_user}-->ChatGPT: {message.text[3:]}')
+    logging.info(f'[Group] {from_user}-->ChatGPT: {message.text[3:]}')
     completion_resp = await openai.ChatCompletion.acreate(
         model="gpt-3.5-turbo",
         messages=messages,
@@ -113,7 +113,7 @@ async def echo_message_supergroup(message):
     back_message = completion_resp.choices[0].message
     end_time = time.time()
     elapsed_time = end_time - start_time
-    logging.info(f"ChatGPT-->{from_user}: {back_message}" + '\n运行时间 {:.3f} 秒'.format(elapsed_time))
+    logging.info(f"[Group] ChatGPT-->{from_user}: {back_message.content.encode('utf-8').decode()}" + '\n运行时间 {:.3f} 秒'.format(elapsed_time) + f'共消耗{completion_resp.usage.total_tokens}个令牌')
     messages.append(back_message)
     redis_pool.set(f"chatgpt:{message.from_user.id}", json.dumps(messages), ex=3600)
     try:
