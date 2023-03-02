@@ -25,15 +25,18 @@ async def balance_check() -> bool:
     s = aiohttp.ClientSession(
         headers={"authorization": "Bearer " + config.get('api_key')},
     )
-    async with s.get('https://api.openai.com/dashboard/billing/credit_grants') as resp:
-        data = await resp.json()
+    try:
+        async with s.get('https://api.openai.com/dashboard/billing/credit_grants') as resp:
+            data = await resp.json()
+            data = data['grants']['data'][0]
+            if data['grant_amount'] - data['used_amount'] < config.get('balance_limit'):
+                logging.warning('OpenAI API 余额到达预设阈值')
+                return True
+            else:
+                return False
+    finally:
         await s.close()
-        data = data['grants']['data'][0]
-        if data['grant_amount'] - data['used_amount'] < config.get('balance_limit'):
-            logging.warning('OpenAI API 余额到达预设阈值')
-            return True
-        else:
-            return False
+
 
 @bot.message_handler(commands=['start', 'help'], chat_types=['private'])
 async def start_message(message):
