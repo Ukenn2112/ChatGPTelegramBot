@@ -1,5 +1,5 @@
 {
-    "session_token": "<YOUR_TOKEN>",
+    "api_key": "<YOUR_API_KEY>",
     "bot_token": "<Telegram bot token>",
     "admin_id": 0,
     "white_list": [],

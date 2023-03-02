@@ -3,9 +3,9 @@ import json
 import logging
 import time
 
+import openai
 import redis
 import telebot
-from revChatGPT import AsyncChatbot
 from telebot.async_telebot import AsyncTeleBot
 
 telebot.logger.setLevel(logging.ERROR)
@@ -18,10 +18,9 @@ logging.basicConfig(
 with open('config.json', "r") as f: config = json.load(f)
 redis_pool = redis.Redis(host=config.get('redis_host'), port=config.get('redis_port'), db=config.get('redis_db'))
 bot = AsyncTeleBot(config.get('bot_token'))
+openai.api_key = config.get('api_key')
 
-chatbot = AsyncChatbot(config.get('session_token'), debug=True)
-
-@bot.message_handler(commands=['start', 'help'])
+@bot.message_handler(commands=['start', 'help'], chat_types=['private'])
 async def start_message(message):
     text = (
         '*欢迎使用 ChatGPT 机器人*\n\n'
@@ -42,9 +41,9 @@ async def start_message(message):
 # 重置对话
 @bot.message_handler(commands=['rechat'])
 async def rechat_message(message):
-    cp_ids = redis_pool.get(message.from_user.id)
-    if not cp_ids: return await bot.reply_to(message, '没有属于你的对话')
-    redis_pool.delete(message.from_user.id)
+    chat_data = redis_pool.get(f"chatgpt:{message.from_user.id}")
+    if not chat_data: return await bot.reply_to(message, '没有属于你的对话')
+    redis_pool.delete(f"chatgpt:{message.from_user.id}")
     return await bot.reply_to(message, '已重置对话')
 
 # 添加白名单
@@ -69,31 +68,28 @@ async def addwhite_message(message):
                      white_list=True)
 async def echo_message_private(message):
     start_time = time.time()
-    cp_ids = redis_pool.get(message.from_user.id)
-    if not cp_ids: cp_ids = [None, None]
-    else: cp_ids = cp_ids.decode().split('|')
-
+    chat_data = redis_pool.get(f"chatgpt:{message.from_user.id}")
+    if chat_data:
+        messages: list = json.loads(chat_data)
+        messages.append({"role": "user", "content": message.text})
+    else:
+        messages = [{"role": "user", "content": message.text}]
     from_user = f'{message.from_user.username or message.from_user.first_name or message.from_user.last_name}[{message.from_user.id}]'
     logging.info(f'{from_user}-->ChatGPT: {message.text}')
+    completion_resp = await openai.ChatCompletion.acreate(
+        model="gpt-3.5-turbo",
+        messages=messages,
+    )
+    back_message = completion_resp.choices[0].message
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    logging.info(f"ChatGPT-->{from_user}: {back_message}" + '\n运行时间 {:.3f} 秒'.format(elapsed_time))
+    messages.append(back_message)
+    redis_pool.set(f"chatgpt:{message.from_user.id}", json.dumps(messages), ex=3600)
     try:
-        resp = await chatbot.get_chat_response(message.text, output="text", conversation_id=cp_ids[0], parent_id=cp_ids[1])
-        end_time = time.time()
-        elapsed_time = end_time - start_time
-        logging.info(f"ChatGPT-->{from_user}: {resp['message']}" + '\n运行时间 {:.3f} 秒'.format(elapsed_time))
-        redis_pool.set(message.from_user.id, f"{resp['conversation_id']}|{resp['parent_id']}", ex=3600)
-    except Exception as error:
-        logging.error(error)
-        return await bot.reply_to(message, f'ChatGPT 服务器出错，请重试～ \n`{error}`', parse_mode='Markdown')
-
-    try:
-        return await bot.reply_to(message, resp['message'], parse_mode='Markdown')
-    except Exception as error:
-        if "can't parse entities" in str(error):
-            return await bot.reply_to(message, resp['message'])
-        elif "replied message not found" in str(error):
-            return chatbot.rollback_conversation()
-        logging.error(error)
-        return await bot.reply_to(message, f'机器人发送回答出错～ \n`{error}`', parse_mode='Markdown')
+        return await bot.reply_to(message, back_message.content, parse_mode='Markdown')
+    except:
+        return await bot.reply_to(message, back_message.content)
 
 # 群组
 @bot.message_handler(content_types=['text'], chat_types=['supergroup'],
@@ -101,33 +97,29 @@ async def echo_message_private(message):
                      white_list=True)
 async def echo_message_supergroup(message):
     start_time = time.time()
-    cp_ids = redis_pool.get(message.from_user.id)
-    if not cp_ids: cp_ids = [None, None]
-    else: cp_ids = cp_ids.decode().split('|')
+    chat_data = redis_pool.get(f"chatgpt:{message.from_user.id}")
+    if chat_data:
+        messages: list = json.loads(chat_data)
+        messages.append({"role": "user", "content": message.text[3:]})
+    else:
+        messages = [{"role": "user", "content": message.text[3:]}]
 
     from_user = f'{message.from_user.username or message.from_user.first_name or message.from_user.last_name}[{message.from_user.id}]'
     logging.info(f'{from_user}-->ChatGPT: {message.text[3:]}')
+    completion_resp = await openai.ChatCompletion.acreate(
+        model="gpt-3.5-turbo",
+        messages=messages,
+    )
+    back_message = completion_resp.choices[0].message
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+    logging.info(f"ChatGPT-->{from_user}: {back_message}" + '\n运行时间 {:.3f} 秒'.format(elapsed_time))
+    messages.append(back_message)
+    redis_pool.set(f"chatgpt:{message.from_user.id}", json.dumps(messages), ex=3600)
     try:
-        resp = await chatbot.get_chat_response(message.text[3:], output="text", conversation_id=cp_ids[0], parent_id=cp_ids[1])
-        end_time = time.time()
-        elapsed_time = end_time - start_time
-        logging.info(f"ChatGPT-->{from_user}: {resp['message']}" + '\n运行时间 {:.3f} 秒'.format(elapsed_time))
-        redis_pool.set(message.from_user.id, f"{resp['conversation_id']}|{resp['parent_id']}", ex=3600)
-    except Exception as error:
-        logging.error(error)
-        return await bot.reply_to(message, f'ChatGPT 服务器出错，请重试～ \n`{error}`', parse_mode='Markdown')
-
-    try:
-        return await bot.reply_to(message, resp['message'], parse_mode='Markdown')
-    except Exception as error:
-        if "can't parse entities" in str(error):
-            return await bot.reply_to(message, resp['message'])
-        elif "replied message not found" in str(error):
-            return chatbot.rollback_conversation()
-        elif "bot was kicked from the supergroup chat" in str(error):
-            return
-        logging.error(error)
-        return await bot.reply_to(message, f'机器人发送回答出错～ \n`{error}`', parse_mode='Markdown')
+        return await bot.reply_to(message, back_message.content, parse_mode='Markdown')
+    except:
+        return await bot.reply_to(message, back_message.content)
 
 class WhiteList(telebot.asyncio_filters.SimpleCustomFilter):
     """白名单过滤器"""

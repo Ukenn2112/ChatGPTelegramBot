@@ -28,23 +28,6 @@
   python3 bot.py
   ```
 
-## 使用 Docker
-
-> 使用 `Xvfb` 来模拟一个桌面环境。如果没有遇到验证码，它可以自动获得 cf_clearance。 
-
-- 修改文件后缀 `config.json.example` 为 `config.json`
-
-  根据文件内提示修改 `config.json` 配置文件
-
-- 构建 Docker 镜像 `docker build -t chatgpt_telegram_bot .`
-
-- 运行 Docker 容器  `docker run -d -v /config.json 所在路径/config.json:/ChatGPTBot/config.json chatgpt_telegram_bot`
-
-   ### 如何停止机器人:
-
-   * `docker ps` 查看正在运行的服务
-   * `docker stop <BOT CONTAINER ID>` 来停止运行的机器人
-
 ## 命令列表
 
 ```
@@ -53,5 +36,3 @@ help - 使用帮助
 rechat - 重置对话
 addwhite - 添加白名单
 ```
-
-## 感谢 [acheong08/ChatGPT](https://github.com/acheong08/ChatGPT) [anton By ChatGPT API](https://twitter.com/abacaj)
