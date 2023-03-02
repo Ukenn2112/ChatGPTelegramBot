@@ -27,6 +27,7 @@ async def balance_check() -> bool:
     )
     async with s.get('https://api.openai.com/dashboard/billing/credit_grants') as resp:
         data = await resp.json()
+        await s.close()
         data = data['grants']['data'][0]
         if data['grant_amount'] - data['used_amount'] < config.get('balance_limit'):
             logging.warning('OpenAI API 余额到达预设阈值')
