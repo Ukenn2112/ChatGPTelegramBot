@@ -7,6 +7,7 @@ import openai
 import redis
 import telebot
 from telebot.async_telebot import AsyncTeleBot
+import aiohttp
 
 telebot.logger.setLevel(logging.ERROR)
 logging.getLogger().setLevel(logging.INFO)
@@ -19,6 +20,19 @@ with open('config.json', "r") as f: config = json.load(f)
 redis_pool = redis.Redis(host=config.get('redis_host'), port=config.get('redis_port'), db=config.get('redis_db'))
 bot = AsyncTeleBot(config.get('bot_token'))
 openai.api_key = config.get('api_key')
+
+async def balance_check() -> bool:
+    s = aiohttp.ClientSession(
+        headers={"authorization": "Bearer " + config.get('api_key')},
+    )
+    async with s.get('https://api.openai.com/dashboard/billing/credit_grants') as resp:
+        data = await resp.json()
+        data = data['grants']['data'][0]
+        if data['grant_amount'] - data['used_amount'] < config.get('balance_limit'):
+            logging.warning('OpenAI API 余额到达预设阈值')
+            return True
+        else:
+            return False
 
 @bot.message_handler(commands=['start', 'help'], chat_types=['private'])
 async def start_message(message):
@@ -76,9 +90,13 @@ async def echo_message_private(message):
         messages = [{"role": "user", "content": message.text}]
     from_user = f'{message.from_user.username or message.from_user.first_name or message.from_user.last_name}[{message.from_user.id}]'
     logging.info(f'{from_user}-->ChatGPT: {message.text}')
+    if await balance_check():
+        return await bot.reply_to(message, 'OpenAI API 余额预设阈值 停止使用')
     completion_resp = await openai.ChatCompletion.acreate(
         model="gpt-3.5-turbo",
         messages=messages,
+        frequency_penalty=1,
+        presence_penalty=1,
     )
     back_message = completion_resp.choices[0].message
     end_time = time.time()
@@ -106,6 +124,8 @@ async def echo_message_supergroup(message):
 
     from_user = f'{message.from_user.username or message.from_user.first_name or message.from_user.last_name}[{message.from_user.id}]'
     logging.info(f'[Group] {from_user}-->ChatGPT: {message.text[3:]}')
+    if await balance_check():
+        return await bot.reply_to(message, 'OpenAI API 余额预设阈值 停止使用')
     completion_resp = await openai.ChatCompletion.acreate(
         model="gpt-3.5-turbo",
         messages=messages,
